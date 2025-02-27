@@ -12,7 +12,7 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-CHANNELS = ["@skillcoursesfree", "@F6qoCTHt_b8xNjNl"]  # <-- Updated channels
+CHANNELS = ["@skillcoursesfree", "https://t.me/+F6qoCTHt_b8xNjNl"]  # <-- Updated channels
 
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["telegram_bot"]
