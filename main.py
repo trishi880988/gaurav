@@ -27,16 +27,6 @@ def get_welcome_message():
     settings = settings_collection.find_one({"_id": "welcome_message"})
     return settings["message"] if settings else "👋 Welcome to our bot!"
 
-async def check_subscription(client, user_id):
-    for channel in CHANNELS:
-        try:
-            member = await client.get_chat_member(channel, user_id)
-            if member.status not in ["member", "administrator", "creator"]:
-                return False
-        except:
-            return False
-    return True
-
 @app.on_message(filters.command("start"))
 async def start(client, message: Message):
     user_id = message.from_user.id
@@ -46,35 +36,36 @@ async def start(client, message: Message):
         users_collection.insert_one({"user_id": user_id, "username": username})
     
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("✅ Joined", callback_data="joined")]]
+        [[InlineKeyboardButton("✅ 𝗝𝗢𝗜𝗡𝗘𝗗", callback_data="joined")]]
     )
 
-    channels_text = "\n".join([f"➡️ [Join {ch}](https://t.me/{ch.replace('@', '')})" for ch in CHANNELS])
+    channels_text = "\n".join([f"🔹 [Join {ch}](https://t.me/{ch.replace('@', '')})" for ch in CHANNELS])
     
     await message.reply(
-        f"🔔 **Please join our channels first:**\n\n{channels_text}", 
-        reply_markup=keyboard, 
+        f"🎉 **𝗪𝗘𝗟𝗖𝗢𝗠𝗘 𝗧𝗢 𝗢𝗨𝗥 𝗕𝗢𝗧!** 🎉\n\n"
+        f"🚀 **𝙎𝙏𝙀𝙋 1:** पहले नीचे दिए गए चैनल्स को जॉइन करें 👇\n\n"
+        f"{channels_text}\n\n"
+        f"💡 **𝙎𝙏𝙀𝙋 2:** अब '✅ 𝗝𝗢𝗜𝗡𝗘𝗗' बटन पर क्लिक करें!",
+        reply_markup=keyboard,
         disable_web_page_preview=True
     )
 
 @app.on_callback_query(filters.regex("joined"))
 async def joined(client, callback_query):
     user_id = callback_query.from_user.id
-    if await check_subscription(client, user_id):
-        welcome_text = get_welcome_message()
-        await callback_query.message.delete()
-        
-        sent_message = await client.send_message(user_id, welcome_text)
-        await asyncio.sleep(5)
+    welcome_text = get_welcome_message()
 
-        delete_message = await client.send_message(
-            user_id, 
-            "⚠️ इस मैसेज को **फॉरवर्ड करके सेव** कर लें, क्योंकि **5 मिनट में ये डिलीट हो जाएगा!**"
-        )
-        await asyncio.sleep(300)  # 5 मिनट का टाइमर
-        await delete_message.delete()
-    else:
-        await callback_query.answer("❌ पहले चैनल्स को जॉइन करें!", show_alert=True)
+    await callback_query.message.delete()
+    
+    sent_message = await client.send_message(user_id, welcome_text)
+    await asyncio.sleep(5)
+
+    delete_message = await client.send_message(
+        user_id, 
+        "⚠️ इस मैसेज को **फॉरवर्ड करके सेव** कर लें, क्योंकि **5 मिनट में ये डिलीट हो जाएगा!**"
+    )
+    await asyncio.sleep(300)  # 5 मिनट का टाइमर
+    await delete_message.delete()
 
 @app.on_message(filters.command("welcome") & filters.user(OWNER_ID))
 async def set_welcome(client, message: Message):
