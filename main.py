@@ -1,55 +1,81 @@
 import os
-from pyrogram import Client, filters
-from pyrogram.errors import PeerIdInvalid
 import asyncio
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from pymongo import MongoClient
+from dotenv import load_dotenv
 
 # Load environment variables
-API_ID = int(os.getenv("API_ID"))  
-API_HASH = os.getenv("API_HASH")  # ✅ Fixed: Removed extra ')'
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # ✅ Fixed: Removed extra ')'
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))  
+load_dotenv()
 
-# Initialize the bot
-bot = Client("movie_search_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
 
-@bot.on_message(filters.command("start"))
-def start(client, message):
-    message.reply_text("👋 Welcome! Send me a movie name, and I'll find it in our channel.")
+# MongoDB connection
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["telegram_bot"]
+users_collection = db["users"]
+settings_collection = db["settings"]
 
-@bot.on_message(filters.text & filters.private)
-async def search_movie(client, message):  # ✅ Fixed: Made this an async function
-    query = message.text.lower()
-    print(f"Searching for: {query}")
-    
-    try:
-        # Search in channel
-        async for msg in client.search_messages(CHANNEL_ID, query, limit=10):  # ✅ Fixed: Made it async
-            if msg.video or msg.document:
-                file_id = msg.video.file_id if msg.video else msg.document.file_id
-                
-                # Send movie to user with warning message
-                sent_msg = await message.reply_video(  # ✅ Fixed: Used await
-                    video=file_id, 
-                    caption=f"🎬 Here is your movie: {msg.caption}\n\n⚠️ This file will be deleted in **30 minutes**. Please save or forward it!"
-                )
+app = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-                # ✅ Fixed: Used asyncio.create_task properly
-                asyncio.create_task(delete_message(client, message.chat.id, sent_msg.message_id))
+# ⬇️ Helper function to get welcome message
+def get_welcome_message():
+    settings = settings_collection.find_one({"_id": "welcome_message"})
+    return settings["message"] if settings else "👋 Welcome to our bot!"
 
-                return
-        
-        await message.reply_text("❌ Movie not found. Try a different name!")
-    except PeerIdInvalid:
-        await message.reply_text("❌ Bot is not an admin in the channel!")
+# ⬇️ Command to set welcome message (Admin only)
+@app.on_message(filters.command("setwelcome") & filters.user(ADMIN_ID))
+async def set_welcome(client, message: Message):
+    new_message = message.text.split("/setwelcome", maxsplit=1)[-1].strip()
+    if not new_message:
+        await message.reply("❌ Please provide a welcome message.")
+        return
 
-async def delete_message(client, chat_id, message_id):
-    await asyncio.sleep(1800)  # ✅ Fixed: Proper delay using asyncio.sleep
-    try:
-        await client.delete_messages(chat_id, message_id)
-        await client.send_message(chat_id, "🗑️ File deleted! Next time, save or forward it quickly.")
-    except Exception as e:
-        print(f"Error deleting message: {e}")
+    settings_collection.update_one({"_id": "welcome_message"}, {"$set": {"message": new_message}}, upsert=True)
+    await message.reply("✅ Welcome message updated successfully!")
 
-if __name__ == "__main__":
-    print("Bot is running...")
-    bot.run()
+# ⬇️ Start command - Send welcome message
+@app.on_message(filters.command("start"))
+async def start(client, message: Message):
+    user_id = message.from_user.id
+    if not users_collection.find_one({"user_id": user_id}):
+        users_collection.insert_one({"user_id": user_id})
+
+    welcome_text = get_welcome_message()
+    sent_message = await message.reply(welcome_text)
+
+    # Auto-delete message after 10 minutes
+    await asyncio.sleep(600)
+    await sent_message.delete()
+
+# ⬇️ Command to get stats (Admin only)
+@app.on_message(filters.command("stats") & filters.user(ADMIN_ID))
+async def stats(client, message: Message):
+    total_users = users_collection.count_documents({})
+    await message.reply(f"📊 Total Users: {total_users}")
+
+# ⬇️ Command to broadcast message to all users (Admin only)
+@app.on_message(filters.command("broadcast") & filters.user(ADMIN_ID))
+async def broadcast(client, message: Message):
+    text = message.text.split("/broadcast", maxsplit=1)[-1].strip()
+    if not text:
+        await message.reply("❌ Please provide a message to broadcast.")
+        return
+
+    users = users_collection.find()
+    sent_count = 0
+    failed_count = 0
+
+    for user in users:
+        try:
+            await client.send_message(user["user_id"], text)
+            sent_count += 1
+        except Exception:
+            failed_count += 1
+
+    await message.reply(f"✅ Broadcast completed!\nSent: {sent_count} users\nFailed: {failed_count} users.")
+
+app.run()
