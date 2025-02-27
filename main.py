@@ -14,7 +14,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 OWNER_ID = int(os.getenv("OWNER_ID"))  # Owner ID को int में कन्वर्ट करना
 
-CHANNELS = ["@channel1", "@channel2"]  # अपने चैनल्स यहाँ ऐड करें
+CHANNELS = ["@skillwithgaurav", "@skillcoursesfree"]  # चैनल्स लिस्ट
 
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["telegram_bot"]
@@ -27,6 +27,16 @@ def get_welcome_message():
     settings = settings_collection.find_one({"_id": "welcome_message"})
     return settings["message"] if settings else "👋 Welcome to our bot!"
 
+async def check_subscription(client, user_id):
+    for channel in CHANNELS:
+        try:
+            member = await client.get_chat_member(channel, user_id)
+            if member.status not in ["member", "administrator", "creator"]:
+                return False
+        except:
+            return False
+    return True
+
 @app.on_message(filters.command("start"))
 async def start(client, message: Message):
     user_id = message.from_user.id
@@ -38,24 +48,33 @@ async def start(client, message: Message):
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("✅ Joined", callback_data="joined")]]
     )
-    await message.reply("🔔 Please join our channels first:", reply_markup=keyboard)
+
+    channels_text = "\n".join([f"➡️ [Join {ch}](https://t.me/{ch.replace('@', '')})" for ch in CHANNELS])
+    
+    await message.reply(
+        f"🔔 **Please join our channels first:**\n\n{channels_text}", 
+        reply_markup=keyboard, 
+        disable_web_page_preview=True
+    )
 
 @app.on_callback_query(filters.regex("joined"))
 async def joined(client, callback_query):
     user_id = callback_query.from_user.id
-    welcome_text = get_welcome_message()
+    if await check_subscription(client, user_id):
+        welcome_text = get_welcome_message()
+        await callback_query.message.delete()
+        
+        sent_message = await client.send_message(user_id, welcome_text)
+        await asyncio.sleep(5)
 
-    await callback_query.message.delete()
-    
-    sent_message = await client.send_message(user_id, welcome_text)
-    await asyncio.sleep(5)
-
-    delete_message = await client.send_message(
-        user_id, 
-        "⚠️ इस मैसेज को **फॉरवर्ड करके सेव** कर लें, क्योंकि **5 मिनट में ये डिलीट हो जाएगा!**"
-    )
-    await asyncio.sleep(300)  # 5 मिनट का टाइमर
-    await delete_message.delete()
+        delete_message = await client.send_message(
+            user_id, 
+            "⚠️ इस मैसेज को **फॉरवर्ड करके सेव** कर लें, क्योंकि **5 मिनट में ये डिलीट हो जाएगा!**"
+        )
+        await asyncio.sleep(300)  # 5 मिनट का टाइमर
+        await delete_message.delete()
+    else:
+        await callback_query.answer("❌ पहले चैनल्स को जॉइन करें!", show_alert=True)
 
 @app.on_message(filters.command("welcome") & filters.user(OWNER_ID))
 async def set_welcome(client, message: Message):
