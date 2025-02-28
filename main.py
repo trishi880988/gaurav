@@ -1,4 +1,5 @@
 import os
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from dotenv import load_dotenv
@@ -41,7 +42,11 @@ app = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 @app.on_message(filters.command("start"))
 async def start(client, message: Message):
     user_id = message.from_user.id
-    await client.send_message(user_id, stored_welcome_message, disable_web_page_preview=True)
+    sent_message = await client.send_message(user_id, stored_welcome_message, disable_web_page_preview=True)
+
+    # 30 मिनट (1800 सेकंड) बाद मैसेज हटाने के लिए डिले सेट करें
+    await asyncio.sleep(1800)
+    await client.delete_messages(user_id, sent_message.message_id)
 
 @app.on_message(filters.command("setwelcome") & filters.user(OWNER_ID))
 async def set_welcome(client, message: Message):
